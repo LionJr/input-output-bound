@@ -2,60 +2,72 @@ package server
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+
 	"github.com/LionJr/input-output-bound/internal/config"
 	"github.com/LionJr/input-output-bound/internal/handlers"
-	"github.com/gin-gonic/gin"
-	errch "github.com/proxeter/errors-channel"
-	"go.uber.org/zap"
-	"net/http"
 )
 
 type Server struct {
-	cfg     *config.AppConfig
-	logger  *zap.Logger
-	handler *handlers.Handler
+	cfg    *config.AppConfig
+	logger *zap.Logger
+	srv    *http.Server
 }
 
-func NewServer(
-	ctx context.Context,
-	cfg *config.AppConfig,
-	logger *zap.Logger,
-	handler *handlers.Handler,
-) <-chan error {
-	return errch.Register(func() error {
-		return (&Server{
-			cfg:     cfg,
-			logger:  logger,
-			handler: handler,
-		}).start(ctx)
-	})
-}
-
-func (s *Server) start(ctx context.Context) error {
-	h := s.initHandlers()
-
-	server := http.Server{
-		Handler: h,
-		Addr:    ":" + s.cfg.HTTP.Port,
+func New(cfg *config.AppConfig, logger *zap.Logger, handler *handlers.Handler) *Server {
+	return &Server{
+		cfg:    cfg,
+		logger: logger,
+		srv: &http.Server{
+			Handler: initHandlers(handler),
+			Addr:    ":" + cfg.HTTP.Port,
+		},
 	}
+}
 
-	s.logger.Info(
-		"Server running",
-		zap.String("host", s.cfg.HTTP.Host),
-		zap.String("port", s.cfg.HTTP.Port),
-	)
+func (s *Server) Run(ctx context.Context) error {
+	errCh := make(chan error, 1)
+
+	go func() {
+		s.logger.Info(
+			"http server listening",
+			zap.String("host", s.cfg.HTTP.Host),
+			zap.String("port", s.cfg.HTTP.Port),
+		)
+
+		if err := s.srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errCh <- err
+			return
+		}
+		errCh <- nil
+	}()
 
 	select {
-	case err := <-errch.Register(server.ListenAndServe):
-		s.logger.Info("Shutdown input_output_bound_app server", zap.String("by", "error"), zap.Error(err))
-		return server.Shutdown(ctx)
 	case <-ctx.Done():
-		s.logger.Info("Shutdown input_output_bound_app server", zap.String("by", "context.Done"))
-		return server.Shutdown(ctx)
+		s.logger.Info("shutdown signal received")
+		return nil
+	case err := <-errCh:
+		if err != nil {
+			return fmt.Errorf("http server: %w", err)
+		}
+		return nil
 	}
 }
 
-func (s *Server) initHandlers() *gin.Engine {
+func (s *Server) Shutdown(ctx context.Context) error {
+	if err := s.srv.Shutdown(ctx); err != nil {
+		return fmt.Errorf("http shutdown: %w", err)
+	}
+	s.logger.Info("http server stopped")
+	return nil
+}
+
+func initHandlers(handler *handlers.Handler) *gin.Engine {
 	router := gin.Default()
 
 	router.GET("/ping", func(c *gin.Context) {
@@ -63,10 +75,10 @@ func (s *Server) initHandlers() *gin.Engine {
 	})
 
 	api := router.Group("/api")
-	iOTasksRouter := api.Group("/task-manager")
+	taskManager := api.Group("/task-manager")
 
-	iOTasksRouter.POST("/tasks", s.handler.CreateTask)
-	iOTasksRouter.GET("/tasks/:id", s.handler.GetTask)
+	taskManager.POST("/tasks", handler.CreateTask)
+	taskManager.GET("/tasks/:id", handler.GetTask)
 
 	return router
 }

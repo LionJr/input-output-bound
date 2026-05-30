@@ -2,11 +2,13 @@ package services
 
 import (
 	"fmt"
-	"github.com/LionJr/input-output-bound/internal/models"
-	"github.com/LionJr/input-output-bound/internal/repositories"
+	"time"
+
 	"github.com/google/uuid"
 	"go.uber.org/zap"
-	"time"
+
+	"github.com/LionJr/input-output-bound/internal/models"
+	"github.com/LionJr/input-output-bound/internal/repositories"
 )
 
 type TaskManagerService struct {
@@ -27,13 +29,10 @@ func (tm *TaskManagerService) CreateTask() (*models.Task, error) {
 		Id:     id,
 		Status: models.Pending,
 	}
-
 	if err := tm.repo.AddTask(id, task); err != nil {
 		return nil, err
 	}
-
 	go tm.executeTask(id)
-
 	return task, nil
 }
 
@@ -66,6 +65,5 @@ func (tm *TaskManagerService) GetTask(id string) (*models.Task, bool) {
 	if err != nil {
 		return nil, false
 	}
-
 	return task, true
 }

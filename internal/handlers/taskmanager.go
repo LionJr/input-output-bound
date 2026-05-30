@@ -1,10 +1,12 @@
 package handlers
 
 import (
-	"github.com/LionJr/input-output-bound/internal/services"
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"net/http"
+
+	"github.com/LionJr/input-output-bound/internal/services"
 )
 
 type Handler struct {
@@ -25,7 +27,6 @@ func (h *Handler) CreateTask(c *gin.Context) {
 		h.logger.Error("failed to create task", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create task"})
 	}
-
 	c.JSON(http.StatusAccepted, task)
 }
 
@@ -36,6 +37,5 @@ func (h *Handler) GetTask(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "task not found"})
 		return
 	}
-
 	c.JSON(http.StatusOK, task)
 }

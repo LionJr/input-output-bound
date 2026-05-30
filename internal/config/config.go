@@ -1,9 +1,11 @@
 package config
 
 import (
-	"github.com/joho/godotenv"
+	"errors"
 	"os"
 	"strconv"
+
+	"github.com/joho/godotenv"
 )
 
 type AppConfig struct {
@@ -19,12 +21,11 @@ type HTTP struct {
 type Redis struct {
 	Addr     string
 	Password string
-	Db       int
+	DB       int
 }
 
 func LoadConfig() (*AppConfig, error) {
-	err := godotenv.Load()
-	if err != nil {
+	if err := godotenv.Load(); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
 
@@ -42,7 +43,7 @@ func LoadConfig() (*AppConfig, error) {
 		Redis: Redis{
 			Addr:     os.Getenv("REDIS_HOST"),
 			Password: os.Getenv("REDIS_PASSWORD"),
-			Db:       db,
+			DB:       db,
 		},
 	}
 
